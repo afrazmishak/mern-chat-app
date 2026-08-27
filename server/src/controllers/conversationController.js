@@ -4,8 +4,11 @@ import Conversation from "../models/Conversation.js"
 import AppError from "../utils/AppError.js"
 import Message from "../models/Message.js";
 import ConversationState from "../models/ConversationState.js";
+import User from "../models/User.js";
 import { asyncHandler } from "../utils/asyncHandler.js"
 import { canAccessConversation } from "../utils/conversationAccess.js"
+import { createDirectKey, } from "../utils/directConversation.js";
+
 
 function createSlug(value) {
     return value
@@ -26,8 +29,36 @@ function serializeParticipant(participant) {
 
 function serializeConversation(
     conversation,
+    currentUserId,
     unreadCount = 0
 ) {
+    let displayName =
+        conversation.name;
+
+    let displayUsername =
+        null;
+
+    if (
+        conversation.type ===
+        "direct"
+    ) {
+        const otherParticipant =
+            conversation.participants.find(
+                (participant) =>
+                    participant._id
+                        .toString() !==
+                    currentUserId.toString()
+            );
+
+        displayName =
+            otherParticipant?.name ??
+            "Unknown user";
+
+        displayUsername =
+            otherParticipant
+                ?.username ?? null;
+    }
+
     return {
         id:
             conversation._id.toString(),
@@ -37,6 +68,10 @@ function serializeConversation(
 
         name:
             conversation.name,
+
+        displayName,
+
+        displayUsername,
 
         slug:
             conversation.slug,
@@ -159,6 +194,7 @@ export const getConversations =
 
                             return serializeConversation(
                                 conversation,
+                                request.user._id,
                                 unreadCount
                             );
                         }
@@ -271,3 +307,110 @@ export const createRoom = asyncHandler(
         });
     }
 );
+
+export const createDirectConversation =
+    asyncHandler(
+        async (
+            request,
+            response
+        ) => {
+            const {
+                targetUserId,
+            } = request.body;
+
+            if (
+                !targetUserId ||
+                !mongoose.isValidObjectId(
+                    targetUserId
+                )
+            ) {
+                throw new AppError(
+                    "Invalid user ID",
+                    400
+                );
+            }
+
+            if (
+                targetUserId ===
+                request.user._id.toString()
+            ) {
+                throw new AppError(
+                    "You cannot start a direct conversation with yourself",
+                    400
+                );
+            }
+
+            const targetUser =
+                await User.findById(
+                    targetUserId
+                ).select(
+                    "_id name username"
+                );
+
+            if (!targetUser) {
+                throw new AppError(
+                    "User not found",
+                    404
+                );
+            }
+
+            const directKey =
+                createDirectKey(
+                    request.user._id,
+                    targetUser._id
+                );
+
+            const conversation =
+                await Conversation.findOneAndUpdate(
+                    {
+                        directKey,
+                    },
+
+                    {
+                        $setOnInsert: {
+                            type:
+                                "direct",
+
+                            directKey,
+
+                            participants: [
+                                request.user._id,
+                                targetUser._id,
+                            ],
+
+                            createdBy:
+                                request.user._id,
+
+                            isPublic:
+                                false,
+                        },
+                    },
+
+                    {
+                        upsert: true,
+                        returnDocument:
+                            "after",
+                        setDefaultsOnInsert:
+                            true,
+                        runValidators: true,
+                    }
+                );
+
+            await conversation.populate(
+                "participants",
+                "_id name username"
+            );
+
+            response
+                .status(200)
+                .json({
+                    success: true,
+
+                    conversation:
+                        serializeConversation(
+                            conversation,
+                            request.user._id
+                        ),
+                });
+        }
+    );

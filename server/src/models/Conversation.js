@@ -30,6 +30,11 @@ const conversationSchema = new mongoose.Schema(
       lowercase: true,
     },
 
+    directKey: {
+      type: String,
+      trim: true,
+    },
+
     description: {
       type: String,
       trim: true,
@@ -66,9 +71,19 @@ const conversationSchema = new mongoose.Schema(
 
 conversationSchema.index(
   { slug: 1 },
+
   {
     unique: true,
     sparse: true,
+  }
+);
+
+conversationSchema.index(
+  { directKey: 1 },
+  {
+    unique: true,
+    sparse: true,
+    name: "unique_direct_conversation",
   }
 );
 
@@ -83,13 +98,17 @@ conversationSchema.pre(
       this.slug = undefined;
       this.isPublic = false;
 
-      const uniqueParticipantIds = new Set(
-        this.participants.map((participantId) =>
-          participantId.toString()
-        )
-      );
+      const uniqueParticipantIds =
+        new Set(
+          this.participants.map(
+            (participantId) =>
+              participantId.toString()
+          )
+        );
 
-      if (uniqueParticipantIds.size !== 2) {
+      if (
+        uniqueParticipantIds.size !== 2
+      ) {
         this.invalidate(
           "participants",
           "A direct conversation must contain exactly two different users"
