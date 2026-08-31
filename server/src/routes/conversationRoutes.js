@@ -1,6 +1,7 @@
 import express from "express";
 
 import {
+  createDirectConversation,
   createRoom,
   getConversation,
   getConversations,
@@ -36,6 +37,11 @@ router.get(
 router.get(
   "/:conversationId",
   getConversation
+);
+
+router.post(
+  "/direct",
+  createDirectConversation
 );
 
 export default router;

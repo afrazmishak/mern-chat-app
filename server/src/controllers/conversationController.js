@@ -223,7 +223,7 @@ export const getConversation = asyncHandler(
             await Conversation.findById(conversationId);
 
         if (!conversation) {
-            throw new AppError("Conversaion not found", 404);
+            throw new AppError("Conversation not found", 404);
         }
 
         if (
@@ -245,7 +245,12 @@ export const getConversation = asyncHandler(
 
         response.status(200).json({
             success: true,
-            conversation: serializeConversation(conversation),
+
+            conversation:
+                serializeConversation(
+                    conversation,
+                    request.user._id
+                ),
         });
     }
 )
@@ -303,7 +308,11 @@ export const createRoom = asyncHandler(
         response.status(201).json({
             success: true,
             message: "Room created successfully",
-            conversation: serializeConversation(room),
+            conversation:
+                serializeConversation(
+                    room,
+                    request.user._id
+                ),
         });
     }
 );

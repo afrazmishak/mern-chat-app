@@ -192,6 +192,26 @@ function ChatPage() {
     setConversationStates,
   ] = useState({});
 
+  const [
+    showUserSearch,
+    setShowUserSearch,
+  ] = useState(false);
+
+  const [
+    userSearchQuery,
+    setUserSearchQuery,
+  ] = useState("");
+
+  const [
+    userSearchResults,
+    setUserSearchResults,
+  ] = useState([]);
+
+  const [
+    searchingUsers,
+    setSearchingUsers,
+  ] = useState(false);
+
   const typingStopTimerRef =
     useRef(null);
 
@@ -1470,26 +1490,6 @@ function ChatPage() {
       }, 1200);
   }
 
-  async function handleLogout() {
-    stopCurrentTyping();
-
-    setError("");
-
-    try {
-      socket.disconnect();
-
-      await logout();
-
-      navigate("/login");
-    } catch (requestError) {
-      setError(
-        requestError.response
-          ?.data?.message ||
-        "Unable to log out"
-      );
-    }
-  }
-
   function isUserOnline(
     userId
   ) {
@@ -1579,6 +1579,139 @@ function ChatPage() {
     return "Sent";
   }
 
+  async function handleLogout() {
+    stopCurrentTyping();
+
+    setError("");
+
+    try {
+      socket.disconnect();
+
+      await logout();
+
+      navigate("/login");
+    } catch (requestError) {
+      setError(
+        requestError.response
+          ?.data?.message ||
+        "Unable to log out"
+      );
+    }
+  }
+
+  async function handleUserSearch(
+    event
+  ) {
+    const value =
+      event.target.value;
+
+    setUserSearchQuery(
+      value
+    );
+
+    if (
+      value.trim().length < 2
+    ) {
+      setUserSearchResults(
+        []
+      );
+
+      return;
+    }
+
+    setSearchingUsers(true);
+
+    try {
+      const response =
+        await apiClient.get(
+          "/users/search",
+          {
+            params: {
+              q:
+                value.trim(),
+            },
+          }
+        );
+
+      setUserSearchResults(
+        response.data.users
+      );
+    } catch (requestError) {
+      setError(
+        requestError.response
+          ?.data?.message ||
+        "Unable to search users"
+      );
+    } finally {
+      setSearchingUsers(false);
+    }
+  }
+
+  async function handleStartDirectConversation(
+    targetUser
+  ) {
+    setError("");
+
+    try {
+      const response =
+        await apiClient.post(
+          "/conversations/direct",
+          {
+            targetUserId:
+              targetUser.id,
+          }
+        );
+
+      const conversation =
+        response.data
+          .conversation;
+
+      setConversations(
+        (currentConversations) => {
+          const alreadyExists =
+            currentConversations.some(
+              (currentConversation) =>
+                currentConversation.id ===
+                conversation.id
+            );
+
+          if (alreadyExists) {
+            return currentConversations;
+          }
+
+          return [
+            ...currentConversations,
+            conversation,
+          ];
+        }
+      );
+
+      socket.emit(
+        "conversation:subscribe",
+        {
+          conversationId:
+            conversation.id,
+        }
+      );
+
+      setSelectedConversation(
+        conversation
+      );
+
+      setShowUserSearch(false);
+
+      setUserSearchQuery("");
+
+      setUserSearchResults([]);
+    } catch (requestError) {
+      setError(
+        requestError.response
+          ?.data?.message ||
+        "Unable to start conversation"
+      );
+    }
+  }
+
   return (
     <main className="chat-app">
       <aside className="chat-sidebar">
@@ -1612,7 +1745,74 @@ function ChatPage() {
               ? "Cancel"
               : "+ Create room"}
           </button>
+
+          <button
+            type="button"
+            className="secondary-sidebar-button"
+            onClick={() =>
+              setShowUserSearch(
+                (currentValue) =>
+                  !currentValue
+              )
+            }
+          >
+            {showUserSearch
+              ? "Close"
+              : "+ New message"}
+          </button>
         </div>
+
+        {showUserSearch && (
+          <div className="user-search-panel">
+            <input
+              type="search"
+              value={userSearchQuery}
+              onChange={handleUserSearch}
+              placeholder="Search users..."
+            />
+
+            {searchingUsers && (
+              <p>Searching...</p>
+            )}
+
+            {!searchingUsers &&
+              userSearchQuery.trim().length >= 2 &&
+              userSearchResults.length === 0 && (
+                <p>No users found.</p>
+              )}
+
+            {userSearchResults.map(
+              (searchUser) => (
+                <button
+                  type="button"
+                  key={searchUser.id}
+                  className="user-search-result"
+                  onClick={() =>
+                    handleStartDirectConversation(
+                      searchUser
+                    )
+                  }
+                >
+                  <div className="user-avatar">
+                    {searchUser.name
+                      .charAt(0)
+                      .toUpperCase()}
+                  </div>
+
+                  <div>
+                    <strong>
+                      {searchUser.name}
+                    </strong>
+
+                    <small>
+                      @{searchUser.username}
+                    </small>
+                  </div>
+                </button>
+              )
+            )}
+          </div>
+        )}
 
         {showRoomForm && (
           <form
@@ -1713,13 +1913,15 @@ function ChatPage() {
 
                   <span className="conversation-details">
                     <strong>
-                      {
-                        conversation.name
-                      }
+                      {conversation.displayName ||
+                        conversation.name}
                     </strong>
 
                     <small>
-                      {conversation.description ||
+                      {conversation.type ===
+                        "direct"
+                        ? `@${conversation.displayUsername}`
+                        : conversation.description ||
                         "No description"}
                     </small>
                   </span>
@@ -1818,14 +2020,22 @@ function ChatPage() {
             <header className="conversation-header">
               <div>
                 <h2>
-                  <span>#</span>
-                  {
-                    selectedConversation.name
-                  }
+                  <span>
+                    {selectedConversation.type ===
+                      "room"
+                      ? "#"
+                      : "@"}
+                  </span>
+
+                  {selectedConversation.displayName ||
+                    selectedConversation.name}
                 </h2>
 
                 <p>
-                  {selectedConversation.description ||
+                  {selectedConversation.type ===
+                    "direct"
+                    ? `Private conversation with @${selectedConversation.displayUsername}`
+                    : selectedConversation.description ||
                     "No room description"}
                 </p>
               </div>
@@ -1989,7 +2199,12 @@ function ChatPage() {
                 onChange={
                   handleMessageDraftChange
                 }
-                placeholder={`Message #${selectedConversation.name}`}
+                placeholder={
+                  selectedConversation.type ===
+                    "direct"
+                    ? `Message @${selectedConversation.displayUsername}`
+                    : `Message #${selectedConversation.name}`
+                }
                 maxLength="4000"
                 rows="1"
                 disabled={
