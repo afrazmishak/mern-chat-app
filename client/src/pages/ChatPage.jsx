@@ -267,16 +267,14 @@ function ChatPage() {
     ]
   );
 
-  const loadingMessages =
-    Boolean(
-      selectedConversationId &&
-      !loadedMessageHistory[
-      selectedConversationId
-      ]
-    );
+  const loadingMessages = Boolean(
+    selectedConversationId &&
+    !loadedMessageHistory[
+    selectedConversationId
+    ]
+  );
 
-  let roomConnectionState =
-    "disconnected";
+  let roomConnectionState = "disconnected";
 
   if (
     socketConnected &&
@@ -628,6 +626,25 @@ function ChatPage() {
               ),
           };
         }
+      );
+
+      setConversations(
+        (currentConversations) =>
+          currentConversations.map(
+            (conversation) =>
+              conversation.id ===
+                message.conversationId
+                ? {
+                  ...conversation,
+
+                  lastMessage:
+                    message,
+
+                  lastActivityAt:
+                    message.createdAt,
+                }
+                : conversation
+          )
       );
 
       if (
@@ -1686,14 +1703,6 @@ function ChatPage() {
         }
       );
 
-      socket.emit(
-        "conversation:subscribe",
-        {
-          conversationId:
-            conversation.id,
-        }
-      );
-
       setSelectedConversation(
         conversation
       );
@@ -1711,6 +1720,161 @@ function ChatPage() {
       );
     }
   }
+
+  const roomConversations =
+    useMemo(
+      () =>
+        conversations
+          .filter(
+            (conversation) =>
+              conversation.type ===
+              "room"
+          )
+          .sort(
+            (
+              firstConversation,
+              secondConversation
+            ) =>
+              new Date(
+                secondConversation.lastActivityAt ??
+                secondConversation.updatedAt
+              ).getTime() -
+              new Date(
+                firstConversation.lastActivityAt ??
+                firstConversation.updatedAt
+              ).getTime()
+          ),
+      [conversations]
+    );
+
+  const directConversations =
+    useMemo(
+      () =>
+        conversations
+          .filter(
+            (conversation) =>
+              conversation.type ===
+              "direct"
+          )
+          .sort(
+            (
+              firstConversation,
+              secondConversation
+            ) =>
+              new Date(
+                secondConversation.lastActivityAt ??
+                secondConversation.updatedAt
+              ).getTime() -
+              new Date(
+                firstConversation.lastActivityAt ??
+                firstConversation.updatedAt
+              ).getTime()
+          ),
+      [conversations]
+    );
+
+  function getConversationPreview(
+    conversation
+  ) {
+    if (
+      conversation.lastMessage
+    ) {
+      const sentByCurrentUser =
+        conversation.lastMessage.sender
+          ?.id === user.id;
+
+      const prefix =
+        sentByCurrentUser
+          ? "You: "
+          : "";
+
+      return `${prefix}${conversation.lastMessage.content}`;
+    }
+
+    if (
+      conversation.type ===
+      "direct"
+    ) {
+      return conversation.displayUsername
+        ? `@${conversation.displayUsername}`
+        : "Private conversation";
+    }
+
+    return (
+      conversation.description ||
+      "No messages yet"
+    );
+  }
+
+  useEffect(() => {
+    function handleNewConversation(
+      conversation
+    ) {
+      if (!conversation?.id) {
+        return;
+      }
+
+      setConversations(
+        (currentConversations) => {
+          const existingConversation =
+            currentConversations.find(
+              (
+                currentConversation
+              ) =>
+                currentConversation.id ===
+                conversation.id
+            );
+
+          if (
+            existingConversation
+          ) {
+            return currentConversations.map(
+              (
+                currentConversation
+              ) =>
+                currentConversation.id ===
+                  conversation.id
+                  ? {
+                    ...currentConversation,
+                    ...conversation,
+                  }
+                  : currentConversation
+            );
+          }
+
+          return [
+            conversation,
+            ...currentConversations,
+          ];
+        }
+      );
+
+      setUnreadCounts(
+        (currentCounts) => ({
+          ...currentCounts,
+
+          [conversation.id]:
+            currentCounts[
+            conversation.id
+            ] ??
+            conversation.unreadCount ??
+            0,
+        })
+      );
+    }
+
+    socket.on(
+      "conversation:new",
+      handleNewConversation
+    );
+
+    return () => {
+      socket.off(
+        "conversation:new",
+        handleNewConversation
+      );
+    };
+  }, []);
 
   return (
     <main className="chat-app">
@@ -1872,26 +2036,22 @@ function ChatPage() {
             <h2>Rooms</h2>
 
             <span>
-              {
-                conversations.length
-              }
+              {roomConversations.length}
             </span>
           </div>
 
           <nav className="conversation-list">
             {loadingConversations && (
               <p className="sidebar-message">
-                Loading rooms...
+                Loading conversations...
               </p>
             )}
 
-            {conversations.map(
+            {roomConversations.map(
               (conversation) => (
                 <button
                   type="button"
-                  key={
-                    conversation.id
-                  }
+                  key={conversation.id}
                   className={
                     selectedConversationId ===
                       conversation.id
@@ -1905,24 +2065,18 @@ function ChatPage() {
                   }
                 >
                   <span className="conversation-icon">
-                    {conversation.type ===
-                      "room"
-                      ? "#"
-                      : "@"}
+                    #
                   </span>
 
                   <span className="conversation-details">
                     <strong>
-                      {conversation.displayName ||
-                        conversation.name}
+                      {conversation.name}
                     </strong>
 
                     <small>
-                      {conversation.type ===
-                        "direct"
-                        ? `@${conversation.displayUsername}`
-                        : conversation.description ||
-                        "No description"}
+                      {getConversationPreview(
+                        conversation
+                      )}
                     </small>
                   </span>
 
@@ -1943,6 +2097,103 @@ function ChatPage() {
                     )}
                 </button>
               )
+            )}
+          </nav>
+
+          <div className="conversation-heading direct-heading">
+            <h2>
+              Direct Messages
+            </h2>
+
+            <span>
+              {directConversations.length}
+            </span>
+          </div>
+
+          <nav className="conversation-list direct-list">
+            {directConversations.length ===
+              0 &&
+              !loadingConversations && (
+                <p className="sidebar-message">
+                  No direct messages yet.
+                </p>
+              )}
+
+            {directConversations.map(
+              (conversation) => {
+                const online =
+                  isUserOnline(
+                    conversation.displayUserId
+                  );
+
+                return (
+                  <button
+                    type="button"
+                    key={conversation.id}
+                    className={
+                      selectedConversationId ===
+                        conversation.id
+                        ? "conversation-item active"
+                        : "conversation-item"
+                    }
+                    onClick={() =>
+                      selectConversation(
+                        conversation
+                      )
+                    }
+                  >
+                    <span className="dm-sidebar-avatar">
+                      <span className="dm-avatar">
+                        {(conversation.displayName ||
+                          "?")
+                          .charAt(0)
+                          .toUpperCase()}
+                      </span>
+
+                      <span
+                        className={
+                          online
+                            ? "dm-presence online"
+                            : "dm-presence offline"
+                        }
+                        title={
+                          online
+                            ? "Online"
+                            : "Offline"
+                        }
+                      />
+                    </span>
+
+                    <span className="conversation-details">
+                      <strong>
+                        {conversation.displayName}
+                      </strong>
+
+                      <small>
+                        {getConversationPreview(
+                          conversation
+                        )}
+                      </small>
+                    </span>
+
+                    {(
+                      unreadCounts[
+                      conversation.id
+                      ] ?? 0
+                    ) > 0 && (
+                        <span className="unread-badge">
+                          {unreadCounts[
+                            conversation.id
+                          ] > 99
+                            ? "99+"
+                            : unreadCounts[
+                            conversation.id
+                            ]}
+                        </span>
+                      )}
+                  </button>
+                );
+              }
             )}
           </nav>
         </div>

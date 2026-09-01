@@ -13,6 +13,7 @@ function App() {
 
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<ChatPage />} />
+        <Route path="/chat/conversations/:conversationId" element={<ChatPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

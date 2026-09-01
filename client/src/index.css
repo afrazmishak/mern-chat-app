@@ -815,3 +815,59 @@ a {
 .user-search-result small {
   color: #9ba5b8;
 }
+
+.direct-heading {
+  margin-top: 10px;
+}
+
+.direct-list {
+  padding-bottom: 12px;
+}
+
+.dm-sidebar-avatar {
+  position: relative;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+}
+
+.dm-avatar {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #2d3952;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.conversation-item.active
+  .dm-avatar {
+  background:
+    rgba(255, 255, 255, 0.18);
+}
+
+.dm-presence {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #172033;
+  border-radius: 50%;
+}
+
+.dm-presence.online {
+  background: #28b57a;
+}
+
+.dm-presence.offline {
+  background: #8995aa;
+}
+
+.conversation-item.active
+  .dm-presence {
+  border-color: #3659d9;
+}
