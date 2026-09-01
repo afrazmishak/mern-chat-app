@@ -38,6 +38,9 @@ function serializeConversation(
     let displayUsername =
         null;
 
+    let displayUserId =
+        null;
+
     if (
         conversation.type ===
         "direct"
@@ -55,8 +58,49 @@ function serializeConversation(
             "Unknown user";
 
         displayUsername =
-            otherParticipant
-                ?.username ?? null;
+            otherParticipant?.username ??
+            null;
+
+        displayUserId =
+            otherParticipant?._id
+                ?.toString() ?? null;
+    }
+
+    let lastMessage = null;
+
+    if (
+        conversation.lastMessage &&
+        conversation.lastMessage.content !==
+        undefined
+    ) {
+        const sender =
+            conversation.lastMessage.sender;
+
+        lastMessage = {
+            id:
+                conversation.lastMessage._id
+                    .toString(),
+
+            content:
+                conversation.lastMessage.content,
+
+            sender: sender
+                ? {
+                    id:
+                        sender._id.toString(),
+
+                    name:
+                        sender.name,
+
+                    username:
+                        sender.username,
+                }
+                : null,
+
+            createdAt:
+                conversation.lastMessage
+                    .createdAt,
+        };
     }
 
     return {
@@ -70,8 +114,8 @@ function serializeConversation(
             conversation.name,
 
         displayName,
-
         displayUsername,
+        displayUserId,
 
         slug:
             conversation.slug,
@@ -87,6 +131,12 @@ function serializeConversation(
                 serializeParticipant
             ),
 
+        lastMessage,
+
+        lastActivityAt:
+            conversation.lastActivityAt ??
+            conversation.updatedAt,
+
         unreadCount,
 
         createdAt:
@@ -97,119 +147,130 @@ function serializeConversation(
     };
 }
 
-export const getConversations =
-    asyncHandler(
-        async (request, response) => {
-            const conversations =
-                await Conversation.find({
-                    $or: [
-                        {
-                            type: "room",
-                            isPublic: true,
-                        },
-                        {
-                            participants:
-                                request.user._id,
-                        },
-                    ],
-                })
-                    .populate(
-                        "participants",
-                        "_id name username"
-                    )
-                    .sort({
-                        type: -1,
-                        name: 1,
-                        updatedAt: -1,
-                    });
-
-            const conversationIds =
-                conversations.map(
-                    (conversation) =>
-                        conversation._id
-                );
-
-            const states =
-                await ConversationState.find({
-                    user:
-                        request.user._id,
-
-                    conversation: {
-                        $in:
-                            conversationIds,
+export const getConversations = asyncHandler(
+    async (request, response) => {
+        const conversations =
+            await Conversation.find({
+                $or: [
+                    {
+                        type: "room",
+                        isPublic: true,
                     },
+                    {
+                        participants:
+                            request.user._id,
+                    },
+                ],
+            })
+                .populate(
+                    "participants",
+                    "_id name username"
+                )
+                .populate({
+                    path: "lastMessage",
+
+                    select:
+                        "_id content sender createdAt",
+
+                    populate: {
+                        path: "sender",
+                        select:
+                            "_id name username",
+                    },
+                })
+                .sort({
+                    type: -1,
+                    name: 1,
+                    updatedAt: -1,
                 });
 
-            const stateMap =
-                new Map(
-                    states.map(
-                        (state) => [
-                            state.conversation
-                                .toString(),
-                            state,
-                        ]
-                    )
-                );
+        const conversationIds =
+            conversations.map(
+                (conversation) =>
+                    conversation._id
+            );
 
-            const serialized =
-                await Promise.all(
-                    conversations.map(
-                        async (
-                            conversation
-                        ) => {
-                            const state =
-                                stateMap.get(
-                                    conversation._id
-                                        .toString()
-                                );
+        const states =
+            await ConversationState.find({
+                user:
+                    request.user._id,
 
-                            const unreadQuery = {
-                                conversation:
-                                    conversation._id,
+                conversation: {
+                    $in:
+                        conversationIds,
+                },
+            });
 
-                                /*
-                                 * Your own messages
-                                 * are never unread.
-                                 */
-                                sender: {
-                                    $ne:
-                                        request.user._id,
-                                },
-                            };
+        const stateMap =
+            new Map(
+                states.map(
+                    (state) => [
+                        state.conversation
+                            .toString(),
+                        state,
+                    ]
+                )
+            );
 
-                            if (
-                                state
-                                    ?.lastReadMessage
-                            ) {
-                                unreadQuery._id = {
-                                    $gt:
-                                        state.lastReadMessage,
-                                };
-                            }
-
-                            const unreadCount =
-                                await Message.countDocuments(
-                                    unreadQuery
-                                );
-
-                            return serializeConversation(
-                                conversation,
-                                request.user._id,
-                                unreadCount
+        const serialized =
+            await Promise.all(
+                conversations.map(
+                    async (
+                        conversation
+                    ) => {
+                        const state =
+                            stateMap.get(
+                                conversation._id
+                                    .toString()
                             );
-                        }
-                    )
-                );
 
-            response
-                .status(200)
-                .json({
-                    success: true,
-                    conversations:
-                        serialized,
-                });
-        }
-    );
+                        const unreadQuery = {
+                            conversation:
+                                conversation._id,
+
+                            /*
+                             * Your own messages
+                             * are never unread.
+                             */
+                            sender: {
+                                $ne:
+                                    request.user._id,
+                            },
+                        };
+
+                        if (
+                            state
+                                ?.lastReadMessage
+                        ) {
+                            unreadQuery._id = {
+                                $gt:
+                                    state.lastReadMessage,
+                            };
+                        }
+
+                        const unreadCount =
+                            await Message.countDocuments(
+                                unreadQuery
+                            );
+
+                        return serializeConversation(
+                            conversation,
+                            request.user._id,
+                            unreadCount
+                        );
+                    }
+                )
+            );
+
+        response
+            .status(200)
+            .json({
+                success: true,
+                conversations:
+                    serialized,
+            });
+    }
+);
 
 export const getConversation = asyncHandler(
     async (request, response) => {
@@ -238,10 +299,26 @@ export const getConversation = asyncHandler(
             );
         }
 
-        await conversation.populate(
-            "participants",
-            "_id name username"
-        );
+        await conversation.populate([
+            {
+                path: "participants",
+                select:
+                    "_id name username",
+            },
+
+            {
+                path: "lastMessage",
+
+                select:
+                    "_id content sender createdAt",
+
+                populate: {
+                    path: "sender",
+                    select:
+                        "_id name username",
+                },
+            },
+        ]);
 
         response.status(200).json({
             success: true,
@@ -317,109 +394,182 @@ export const createRoom = asyncHandler(
     }
 );
 
-export const createDirectConversation =
-    asyncHandler(
-        async (
-            request,
-            response
-        ) => {
-            const {
-                targetUserId,
-            } = request.body;
+export const createDirectConversation = asyncHandler(
+    async (
+        request,
+        response
+    ) => {
+        const {
+            targetUserId,
+        } = request.body;
 
-            if (
-                !targetUserId ||
-                !mongoose.isValidObjectId(
-                    targetUserId
-                )
-            ) {
-                throw new AppError(
-                    "Invalid user ID",
-                    400
-                );
-            }
+        if (
+            !targetUserId ||
+            !mongoose.isValidObjectId(
+                targetUserId
+            )
+        ) {
+            throw new AppError(
+                "Invalid user ID",
+                400
+            );
+        }
 
-            if (
-                targetUserId ===
-                request.user._id.toString()
-            ) {
-                throw new AppError(
-                    "You cannot start a direct conversation with yourself",
-                    400
-                );
-            }
+        if (
+            targetUserId ===
+            request.user._id.toString()
+        ) {
+            throw new AppError(
+                "You cannot start a direct conversation with yourself",
+                400
+            );
+        }
 
-            const targetUser =
-                await User.findById(
-                    targetUserId
-                ).select(
-                    "_id name username"
-                );
-
-            if (!targetUser) {
-                throw new AppError(
-                    "User not found",
-                    404
-                );
-            }
-
-            const directKey =
-                createDirectKey(
-                    request.user._id,
-                    targetUser._id
-                );
-
-            const conversation =
-                await Conversation.findOneAndUpdate(
-                    {
-                        directKey,
-                    },
-
-                    {
-                        $setOnInsert: {
-                            type:
-                                "direct",
-
-                            directKey,
-
-                            participants: [
-                                request.user._id,
-                                targetUser._id,
-                            ],
-
-                            createdBy:
-                                request.user._id,
-
-                            isPublic:
-                                false,
-                        },
-                    },
-
-                    {
-                        upsert: true,
-                        returnDocument:
-                            "after",
-                        setDefaultsOnInsert:
-                            true,
-                        runValidators: true,
-                    }
-                );
-
-            await conversation.populate(
-                "participants",
+        const targetUser =
+            await User.findById(
+                targetUserId
+            ).select(
                 "_id name username"
             );
 
-            response
-                .status(200)
-                .json({
-                    success: true,
-
-                    conversation:
-                        serializeConversation(
-                            conversation,
-                            request.user._id
-                        ),
-                });
+        if (!targetUser) {
+            throw new AppError(
+                "User not found",
+                404
+            );
         }
-    );
+
+        const directKey =
+            createDirectKey(
+                request.user._id,
+                targetUser._id
+            );
+
+        const conversation =
+            await Conversation.findOneAndUpdate(
+                {
+                    directKey,
+                },
+
+                {
+                    $setOnInsert: {
+                        type:
+                            "direct",
+
+                        directKey,
+
+                        participants: [
+                            request.user._id,
+                            targetUser._id,
+                        ],
+
+                        createdBy:
+                            request.user._id,
+
+                        isPublic:
+                            false,
+                    },
+                },
+
+                {
+                    upsert: true,
+                    returnDocument:
+                        "after",
+                    setDefaultsOnInsert:
+                        true,
+                    runValidators: true,
+                }
+            );
+
+        await conversation.populate([
+            {
+                path: "participants",
+                select:
+                    "_id name username",
+            },
+
+            {
+                path: "lastMessage",
+
+                select:
+                    "_id content sender createdAt",
+
+                populate: {
+                    path: "sender",
+                    select:
+                        "_id name username",
+                },
+            },
+        ]);
+
+        const io =
+            request.app.get("io");
+
+        const requesterConversation =
+            serializeConversation(
+                conversation,
+                request.user._id
+            );
+
+        const targetConversation =
+            serializeConversation(
+                conversation,
+                targetUser._id
+            );
+
+        if (io) {
+            const conversationRoom =
+                `conversation:${conversation._id.toString()}`;
+
+            const requesterUserRoom =
+                `user:${request.user._id.toString()}`;
+
+            const targetUserRoom =
+                `user:${targetUser._id.toString()}`;
+
+            /*
+             * Make all currently connected
+             * sockets/tabs for both users
+             * subscribe to the new DM.
+             */
+            io.in(
+                requesterUserRoom
+            ).socketsJoin(
+                conversationRoom
+            );
+
+            io.in(
+                targetUserRoom
+            ).socketsJoin(
+                conversationRoom
+            );
+
+            /*
+             * Update every tab/device for
+             * both users.
+             */
+            io.to(
+                requesterUserRoom
+            ).emit(
+                "conversation:new",
+                requesterConversation
+            );
+
+            io.to(
+                targetUserRoom
+            ).emit(
+                "conversation:new",
+                targetConversation
+            );
+        }
+
+        response
+            .status(200)
+            .json({
+                success: true,
+
+                conversation:
+                    requesterConversation,
+            });
+    }
+);

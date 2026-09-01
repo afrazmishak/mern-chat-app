@@ -45,6 +45,17 @@ const conversationSchema = new mongoose.Schema(
       default: "",
     },
 
+    lastMessage: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message",
+      default: null,
+    },
+
+    lastActivityAt: {
+      type: Date,
+      default: Date.now,
+    },
+
     participants: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -88,6 +99,10 @@ conversationSchema.index(
     name: "unique_direct_conversation",
   }
 );
+
+conversationSchema.index({
+  lastActivityAt: -1,
+});
 
 conversationSchema.pre(
   "validate",

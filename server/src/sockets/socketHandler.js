@@ -429,8 +429,7 @@ export function registerSocketHandlers(
       }
     );
 
-    socket.on(
-      "conversation:delivered",
+    socket.on("conversation:delivered",
       async (
         payload = {},
         acknowledge
@@ -525,8 +524,7 @@ export function registerSocketHandlers(
       }
     );
 
-    socket.on(
-      "conversation:read",
+    socket.on("conversation:read",
       async (
         payload = {},
         acknowledge
@@ -617,23 +615,20 @@ export function registerSocketHandlers(
       `Authenticated socket connected: ${socket.user.username} (${socket.id})`
     );
 
-    socket.join(
-      `user:${socket.user.id}`
-    );
+    socket.join(`user:${socket.user.id}`);
 
-    const accessibleConversations =
-      await Conversation.find({
-        $or: [
-          {
-            type: "room",
-            isPublic: true,
-          },
-          {
-            participants:
-              socket.user.id,
-          },
-        ],
-      }).select("_id name");
+    const accessibleConversations = await Conversation.find({
+      $or: [
+        {
+          type: "room",
+          isPublic: true,
+        },
+        {
+          participants:
+            socket.user.id,
+        },
+      ],
+    }).select("_id name");
 
     for (
       const conversation of
@@ -690,8 +685,7 @@ export function registerSocketHandlers(
       }
     );
 
-    socket.on(
-      "conversation:join",
+    socket.on("conversation:join",
       async (
         payload = {},
         acknowledge
@@ -815,8 +809,7 @@ export function registerSocketHandlers(
       }
     );
 
-    socket.on(
-      "conversation:leave",
+    socket.on("conversation:leave",
       (
         payload = {},
         acknowledge
@@ -865,8 +858,7 @@ export function registerSocketHandlers(
       }
     );
 
-    socket.on(
-      "message:send",
+    socket.on("message:send",
       async (
         payload = {},
         acknowledge
@@ -1031,6 +1023,19 @@ export function registerSocketHandlers(
             "_id name username"
           );
 
+          await Conversation.findByIdAndUpdate(
+            conversationId,
+            {
+              $set: {
+                lastMessage:
+                  message._id,
+
+                lastActivityAt:
+                  message.createdAt,
+              },
+            }
+          );
+
           const serializedMessage =
             serializeMessage(message);
 
@@ -1074,8 +1079,7 @@ export function registerSocketHandlers(
       }
     );
 
-    socket.on(
-      "disconnecting",
+    socket.on("disconnecting",
       () => {
         if (
           socket.activeConversationId
@@ -1088,8 +1092,7 @@ export function registerSocketHandlers(
       }
     );
 
-    socket.on(
-      "disconnect",
+    socket.on("disconnect",
       (reason) => {
         const presenceResult =
           presenceStore.removeConnection(
@@ -1120,8 +1123,7 @@ export function registerSocketHandlers(
       }
     );
 
-    socket.on(
-      "typing:start",
+    socket.on("typing:start",
       (payload = {}) => {
         const {
           conversationId,
@@ -1150,8 +1152,7 @@ export function registerSocketHandlers(
       }
     );
 
-    socket.on(
-      "typing:stop",
+    socket.on("typing:stop",
       (payload = {}) => {
         const {
           conversationId,
