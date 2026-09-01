@@ -7,6 +7,7 @@ import {
 
 import {
   useNavigate,
+  useParams,
 } from "react-router-dom";
 
 import apiClient from "../api/apiClient";
@@ -88,6 +89,11 @@ function ChatPage() {
   const navigate = useNavigate();
 
   const {
+    conversationId:
+    conversationIdFromUrl,
+  } = useParams();
+
+  const {
     user,
     logout,
   } = useAuth();
@@ -96,11 +102,6 @@ function ChatPage() {
     conversations,
     setConversations,
   ] = useState([]);
-
-  const [
-    selectedConversation,
-    setSelectedConversation,
-  ] = useState(null);
 
   const [
     socketConnected,
@@ -226,6 +227,24 @@ function ChatPage() {
 
   const typingExpiryTimersRef =
     useRef(new Map());
+
+  const selectedConversation =
+    useMemo(() => {
+      if (!conversationIdFromUrl) {
+        return null;
+      }
+
+      return (
+        conversations.find(
+          (conversation) =>
+            conversation.id ===
+            conversationIdFromUrl
+        ) ?? null
+      );
+    }, [
+      conversationIdFromUrl,
+      conversations,
+    ]);
 
   const selectedConversationId =
     selectedConversation?.id ??
@@ -370,15 +389,6 @@ function ChatPage() {
         setConversations(
           loadedConversations
         );
-
-        if (
-          loadedConversations.length >
-          0
-        ) {
-          setSelectedConversation(
-            loadedConversations[0]
-          );
-        }
       })
       .catch(
         (requestError) => {
@@ -405,6 +415,59 @@ function ChatPage() {
       componentActive = false;
     };
   }, []);
+
+  /*
+   * Restore Conversation From URL.
+   */
+
+  useEffect(() => {
+    if (
+      loadingConversations ||
+      conversations.length === 0
+    ) {
+      return;
+    }
+
+    /*
+     * If the URL points to an
+     * accessible conversation,
+     * nothing needs to be done.
+     */
+    if (conversationIdFromUrl) {
+      const conversationExists =
+        conversations.some(
+          (conversation) =>
+            conversation.id ===
+            conversationIdFromUrl
+        );
+
+      if (conversationExists) {
+        return;
+      }
+    }
+
+    /*
+     * No conversation ID, or an
+     * invalid/inaccessible ID.
+     *
+     * Redirect to the first
+     * accessible conversation.
+     */
+    const fallbackConversation =
+      conversations[0];
+
+    navigate(
+      `/chat/conversations/${fallbackConversation.id}`,
+      {
+        replace: true,
+      }
+    );
+  }, [
+    conversationIdFromUrl,
+    conversations,
+    loadingConversations,
+    navigate,
+  ]);
 
   /*
    * Connect Socket.IO.
@@ -1228,6 +1291,10 @@ function ChatPage() {
   function selectConversation(
     conversation
   ) {
+    if (!conversation?.id) {
+      return;
+    }
+
     if (
       conversation.id ===
       selectedConversationId
@@ -1245,8 +1312,8 @@ function ChatPage() {
 
     setMessageDraft("");
 
-    setSelectedConversation(
-      conversation
+    navigate(
+      `/chat/conversations/${conversation.id}`
     );
   }
 
@@ -1308,8 +1375,8 @@ function ChatPage() {
         })
       );
 
-      setSelectedConversation(
-        createdRoom
+      navigate(
+        `/chat/conversations/${createdRoom.id}`
       );
 
       setNewRoom({
@@ -1318,6 +1385,7 @@ function ChatPage() {
       });
 
       setShowRoomForm(false);
+
     } catch (requestError) {
       setError(
         requestError.response
@@ -1703,8 +1771,8 @@ function ChatPage() {
         }
       );
 
-      setSelectedConversation(
-        conversation
+      navigate(
+        `/chat/conversations/${conversation.id}`
       );
 
       setShowUserSearch(false);
@@ -1721,57 +1789,55 @@ function ChatPage() {
     }
   }
 
-  const roomConversations =
-    useMemo(
-      () =>
-        conversations
-          .filter(
-            (conversation) =>
-              conversation.type ===
-              "room"
-          )
-          .sort(
-            (
-              firstConversation,
-              secondConversation
-            ) =>
-              new Date(
-                secondConversation.lastActivityAt ??
-                secondConversation.updatedAt
-              ).getTime() -
-              new Date(
-                firstConversation.lastActivityAt ??
-                firstConversation.updatedAt
-              ).getTime()
-          ),
-      [conversations]
-    );
+  const roomConversations = useMemo(
+    () =>
+      conversations
+        .filter(
+          (conversation) =>
+            conversation.type ===
+            "room"
+        )
+        .sort(
+          (
+            firstConversation,
+            secondConversation
+          ) =>
+            new Date(
+              secondConversation.lastActivityAt ??
+              secondConversation.updatedAt
+            ).getTime() -
+            new Date(
+              firstConversation.lastActivityAt ??
+              firstConversation.updatedAt
+            ).getTime()
+        ),
+    [conversations]
+  );
 
-  const directConversations =
-    useMemo(
-      () =>
-        conversations
-          .filter(
-            (conversation) =>
-              conversation.type ===
-              "direct"
-          )
-          .sort(
-            (
-              firstConversation,
-              secondConversation
-            ) =>
-              new Date(
-                secondConversation.lastActivityAt ??
-                secondConversation.updatedAt
-              ).getTime() -
-              new Date(
-                firstConversation.lastActivityAt ??
-                firstConversation.updatedAt
-              ).getTime()
-          ),
-      [conversations]
-    );
+  const directConversations = useMemo(
+    () =>
+      conversations
+        .filter(
+          (conversation) =>
+            conversation.type ===
+            "direct"
+        )
+        .sort(
+          (
+            firstConversation,
+            secondConversation
+          ) =>
+            new Date(
+              secondConversation.lastActivityAt ??
+              secondConversation.updatedAt
+            ).getTime() -
+            new Date(
+              firstConversation.lastActivityAt ??
+              firstConversation.updatedAt
+            ).getTime()
+        ),
+    [conversations]
+  );
 
   function getConversationPreview(
     conversation
@@ -2321,24 +2387,24 @@ function ChatPage() {
                 0 ? (
                 <div className="messages-state">
                   <div className="placeholder-icon">
-                    #
+                    {selectedConversation.type ===
+                      "room"
+                      ? "#"
+                      : "@"}
                   </div>
 
                   <h2>
-                    Welcome to #
-                    {
-                      selectedConversation.name
-                    }
+                    {selectedConversation.type ===
+                      "room"
+                      ? `Welcome to #${selectedConversation.name}`
+                      : `Start a conversation with ${selectedConversation.displayName}`}
                   </h2>
 
                   <p>
-                    There are no
-                    messages yet.
-                  </p>
-
-                  <p>
-                    Start the
-                    conversation.
+                    {selectedConversation.type ===
+                      "room"
+                      ? "There are no messages yet."
+                      : `Send your first private message to @${selectedConversation.displayUsername}.`}
                   </p>
                 </div>
               ) : (
