@@ -1789,55 +1789,69 @@ function ChatPage() {
     }
   }
 
-  const roomConversations = useMemo(
-    () =>
-      conversations
-        .filter(
-          (conversation) =>
-            conversation.type ===
-            "room"
-        )
-        .sort(
-          (
-            firstConversation,
-            secondConversation
-          ) =>
-            new Date(
-              secondConversation.lastActivityAt ??
-              secondConversation.updatedAt
-            ).getTime() -
-            new Date(
-              firstConversation.lastActivityAt ??
-              firstConversation.updatedAt
-            ).getTime()
-        ),
-    [conversations]
-  );
+  function getConversationActivityTime(
+    conversation
+  ) {
+    const activityValue =
+      conversation.lastActivityAt ??
+      conversation.lastMessage
+        ?.createdAt ??
+      conversation.createdAt;
 
-  const directConversations = useMemo(
-    () =>
-      conversations
-        .filter(
-          (conversation) =>
-            conversation.type ===
-            "direct"
-        )
-        .sort(
-          (
-            firstConversation,
-            secondConversation
-          ) =>
-            new Date(
-              secondConversation.lastActivityAt ??
-              secondConversation.updatedAt
-            ).getTime() -
-            new Date(
-              firstConversation.lastActivityAt ??
-              firstConversation.updatedAt
-            ).getTime()
-        ),
-    [conversations]
-  );
+    return activityValue
+      ? new Date(
+        activityValue
+      ).getTime()
+      : 0;
+  }
+
+  const roomConversations =
+    useMemo(
+      () =>
+        conversations
+          .filter(
+            (conversation) =>
+              conversation.type ===
+              "room"
+          )
+          .sort(
+            (
+              firstConversation,
+              secondConversation
+            ) =>
+              getConversationActivityTime(
+                secondConversation
+              ) -
+              getConversationActivityTime(
+                firstConversation
+              )
+          ),
+      [conversations]
+    );
+
+  const directConversations =
+    useMemo(
+      () =>
+        conversations
+          .filter(
+            (conversation) =>
+              conversation.type ===
+              "direct"
+          )
+          .sort(
+            (
+              firstConversation,
+              secondConversation
+            ) =>
+              getConversationActivityTime(
+                secondConversation
+              ) -
+              getConversationActivityTime(
+                firstConversation
+              )
+          ),
+      [conversations]
+    );
 
   function getConversationPreview(
     conversation

@@ -179,9 +179,8 @@ export const getConversations = asyncHandler(
                     },
                 })
                 .sort({
-                    type: -1,
-                    name: 1,
-                    updatedAt: -1,
+                    lastActivityAt: -1,
+                    createdAt: -1,
                 });
 
         const conversationIds =

@@ -53,7 +53,7 @@ const conversationSchema = new mongoose.Schema(
 
     lastActivityAt: {
       type: Date,
-      default: Date.now,
+      default: null,
     },
 
     participants: [
